@@ -17,8 +17,8 @@ type WorkerPool[T any] struct {
 	cancel         context.CancelFunc
 }
 
-func NewWorkerPool[T any](task Task[T], data <-chan T, errChan chan<- error) WorkerPool[T] {
-	ctx, cancel := context.WithCancel(context.Background())
+func NewWorkerPool[T any](task Task[T], parentCtx context.Context, data <-chan T, errChan chan<- error) WorkerPool[T] {
+	ctx, cancel := context.WithCancel(parentCtx)
 	return WorkerPool[T]{
 		idCounter:      0,
 		idCounterMutex: sync.Mutex{},

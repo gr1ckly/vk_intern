@@ -2,6 +2,7 @@ package main
 
 import (
 	"VK_intern_test/pkg/workerpool"
+	"context"
 	"fmt"
 	"strconv"
 )
@@ -16,7 +17,7 @@ func (st StringTask) Do(line string) error {
 func main() {
 	errChan := make(chan error)
 	dataChan := make(chan string)
-	wp := workerpool.NewWorkerPool[string](StringTask{}, dataChan, errChan)
+	wp := workerpool.NewWorkerPool[string](StringTask{}, context.Background(), dataChan, errChan)
 	defer wp.Stop()
 	go func() {
 		defer close(dataChan)
