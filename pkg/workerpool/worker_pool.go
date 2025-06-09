@@ -8,7 +8,7 @@ import (
 type WorkerPool[T any] struct {
 	idCounter      int
 	idCounterMutex sync.Mutex
-	workerMap      map[int]Worker[T]
+	workerMap      map[int]*Worker[T]
 	mapMutex       sync.RWMutex
 	task           Task[T]
 	data           <-chan T
@@ -17,12 +17,12 @@ type WorkerPool[T any] struct {
 	cancel         context.CancelFunc
 }
 
-func NewWorkerPool[T any](task Task[T], parentCtx context.Context, data <-chan T, errChan chan<- error) WorkerPool[T] {
+func NewWorkerPool[T any](task Task[T], parentCtx context.Context, data <-chan T, errChan chan<- error) *WorkerPool[T] {
 	ctx, cancel := context.WithCancel(parentCtx)
-	return WorkerPool[T]{
+	return &WorkerPool[T]{
 		idCounter:      0,
 		idCounterMutex: sync.Mutex{},
-		workerMap:      make(map[int]Worker[T]),
+		workerMap:      make(map[int]*Worker[T]),
 		mapMutex:       sync.RWMutex{},
 		task:           task,
 		data:           data,

@@ -15,9 +15,9 @@ type Worker[T any] struct {
 	running atomic.Bool
 }
 
-func NewWorker[T any](id int, task Task[T], parentCtx context.Context) Worker[T] {
+func NewWorker[T any](id int, task Task[T], parentCtx context.Context) *Worker[T] {
 	ctx, cancel := context.WithCancel(parentCtx)
-	return Worker[T]{id, task, ctx, cancel, sync.WaitGroup{}, atomic.Bool{}}
+	return &Worker[T]{id, task, ctx, cancel, sync.WaitGroup{}, atomic.Bool{}}
 }
 
 func (w *Worker[T]) Run(data <-chan T, errChan chan<- error) error {
