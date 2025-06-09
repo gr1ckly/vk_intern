@@ -7,24 +7,30 @@ import (
 )
 
 type Worker[T any] struct {
-	id      int
-	task    Task[T]
-	ctx     context.Context
-	cancel  context.CancelFunc
-	wg      sync.WaitGroup
-	running atomic.Bool
+	id          int
+	task        Task[T]
+	ctx         context.Context
+	cancel      context.CancelFunc
+	cancelMutex sync.Mutex
+	wg          sync.WaitGroup
+	hasStarted  atomic.Bool
 }
 
 func NewWorker[T any](id int, task Task[T], parentCtx context.Context) *Worker[T] {
 	ctx, cancel := context.WithCancel(parentCtx)
-	return &Worker[T]{id, task, ctx, cancel, sync.WaitGroup{}, atomic.Bool{}}
+	return &Worker[T]{
+		id:     id,
+		task:   task,
+		ctx:    ctx,
+		cancel: cancel,
+	}
 }
 
 func (w *Worker[T]) Run(data <-chan T, errChan chan<- error) error {
 	if w.cancel == nil {
 		return NewWorkerRestartError(w.id)
 	}
-	if !w.running.CompareAndSwap(false, true) {
+	if !w.hasStarted.CompareAndSwap(false, true) {
 		return NewAlreadyStartedError(w.id)
 	}
 	w.wg.Add(1)
@@ -39,7 +45,11 @@ func (w *Worker[T]) Run(data <-chan T, errChan chan<- error) error {
 					return
 				}
 				if err := w.task.Do(curr); err != nil {
-					errChan <- err
+					select {
+					case <-w.ctx.Done():
+						return
+					case errChan <- err:
+					}
 				}
 			}
 		}
@@ -48,13 +58,21 @@ func (w *Worker[T]) Run(data <-chan T, errChan chan<- error) error {
 }
 
 func (w *Worker[T]) Wait() {
-	w.wg.Wait()
-	w.cancel = nil
+	if w.hasStarted.Load() {
+		w.wg.Wait()
+		w.cancelMutex.Lock()
+		defer w.cancelMutex.Unlock()
+		w.cancel = nil
+	}
 }
 
 func (w *Worker[T]) Stop() {
-	if w.cancel != nil {
-		w.cancel()
-		w.cancel = nil
+	if w.hasStarted.Load() {
+		w.cancelMutex.Lock()
+		defer w.cancelMutex.Unlock()
+		if w.cancel != nil {
+			w.cancel()
+			w.cancel = nil
+		}
 	}
 }

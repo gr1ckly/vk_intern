@@ -14,11 +14,9 @@ type WorkerPool[T any] struct {
 	data           <-chan T
 	errChan        chan<- error
 	ctx            context.Context
-	cancel         context.CancelFunc
 }
 
 func NewWorkerPool[T any](task Task[T], parentCtx context.Context, data <-chan T, errChan chan<- error) *WorkerPool[T] {
-	ctx, cancel := context.WithCancel(parentCtx)
 	return &WorkerPool[T]{
 		idCounter:      0,
 		idCounterMutex: sync.Mutex{},
@@ -27,8 +25,7 @@ func NewWorkerPool[T any](task Task[T], parentCtx context.Context, data <-chan T
 		task:           task,
 		data:           data,
 		errChan:        errChan,
-		ctx:            ctx,
-		cancel:         cancel,
+		ctx:            parentCtx,
 	}
 }
 
@@ -37,10 +34,14 @@ func (wp *WorkerPool[T]) AddWorker() (int, error) {
 	defer wp.idCounterMutex.Unlock()
 	wp.idCounter++
 	currWorker := NewWorker(wp.idCounter, wp.task, wp.ctx)
+	err := currWorker.Run(wp.data, wp.errChan)
+	if err != nil {
+		return -1, err
+	}
 	wp.mapMutex.Lock()
 	defer wp.mapMutex.Unlock()
 	wp.workerMap[wp.idCounter] = currWorker
-	return wp.idCounter, currWorker.Run(wp.data, wp.errChan)
+	return wp.idCounter, nil
 }
 
 func (wp *WorkerPool[T]) RemoveWorker(id int) error {
@@ -56,12 +57,18 @@ func (wp *WorkerPool[T]) RemoveWorker(id int) error {
 }
 
 func (wp *WorkerPool[T]) Stop() {
-	wp.cancel()
+	wp.mapMutex.Lock()
+	defer wp.mapMutex.Unlock()
+	for key, _ := range wp.workerMap {
+		w := wp.workerMap[key]
+		w.Stop()
+	}
+	wp.workerMap = make(map[int]*Worker[T])
 }
 
 func (wp *WorkerPool[T]) Wait() {
-	wp.mapMutex.Lock()
-	defer wp.mapMutex.Unlock()
+	wp.mapMutex.RLock()
+	defer wp.mapMutex.RUnlock()
 	for key, _ := range wp.workerMap {
 		w := wp.workerMap[key]
 		w.Wait()
